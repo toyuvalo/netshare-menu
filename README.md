@@ -1,6 +1,6 @@
 # NetShare Menu
 
-Right-click any file, folder, or the desktop on Windows to instantly share or receive files over your local network — no cloud, no accounts, no cables. Works with every device that has a browser: iPhone, Android, Mac, Linux.
+Right-click any file, folder, or the desktop to instantly share or receive files over your local network — no cloud, no accounts, no cables. Works with every device that has a browser: iPhone, Android, Mac, Linux. Runs on **Windows, macOS, and Linux**.
 
 ## Screenshots
 
@@ -28,6 +28,8 @@ Opens a receive-only server so other devices can send files to you without you n
 
 ## Install
 
+### Windows
+
 Right-click `install.ps1` → **Run with PowerShell**, or:
 
 ```powershell
@@ -42,11 +44,38 @@ The installer:
 - Adds a Windows Firewall inbound rule for ports 8080–8099 (UAC prompt — click Yes)
 - Auto-installs the `qrcode` Python package for QR code generation
 
+### macOS
+
+```bash
+git clone https://github.com/toyuvalo/netshare-menu
+cd netshare-menu
+bash install-mac.sh
+```
+
+The installer:
+- Installs `qrcode[pil]` for QR code display
+- Registers **Share with NetShare** as a Finder Quick Action (right-click any file or folder)
+- Registers **Receive Files (NetShare)** as a Finder service (Finder menu bar → Services)
+
+### Linux
+
+```bash
+git clone https://github.com/toyuvalo/netshare-menu
+cd netshare-menu
+bash install-linux.sh
+```
+
+The installer:
+- Installs `qrcode[pil]` for QR code display
+- Registers **Share with NetShare** and **Receive Files (NetShare)** in GNOME/Nautilus (Scripts menu) and KDE/Dolphin (service menu) — Plasma 5 + 6
+
 ## Requirements
 
-- Windows 10/11
-- Python 3.8+ — [python.org](https://www.python.org/downloads/)
-- `curl.exe` — built into Windows 10 (1803+), needed for transfer.sh uploads
+| OS | Requirements |
+|----|-------------|
+| Windows | Windows 10/11, Python 3.8+, `curl.exe` (built-in since Win 10 1803) |
+| macOS | Python 3.8+, macOS 10.15+ |
+| Linux | Python 3.8+, GNOME/Nautilus or KDE/Dolphin |
 
 ## How it works
 
@@ -60,11 +89,11 @@ The server page is a dark-themed single-page HTML app served by `server.py` — 
 
 ## Uninstall
 
-Right-click `uninstall.ps1` → **Run with PowerShell**, or:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File "%LOCALAPPDATA%\NetShareMenu\uninstall.ps1"
-```
+| OS | Command |
+|----|---------|
+| Windows | Right-click `uninstall.ps1` → Run with PowerShell, or: `powershell -ExecutionPolicy Bypass -File "%LOCALAPPDATA%\NetShareMenu\uninstall.ps1"` |
+| macOS | `bash uninstall-mac.sh` |
+| Linux | `bash uninstall-linux.sh` |
 
 ## Related
 
