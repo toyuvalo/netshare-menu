@@ -8,7 +8,8 @@ $wsScript   = "$env:SystemRoot\System32\wscript.exe"
 $psArgs     = "-ExecutionPolicy Bypass -NoProfile -WindowStyle Hidden -File"
 $script     = Join-Path $installDir "net-share.ps1"
 $launcher   = Join-Path $installDir "launcher.vbs"
-$icon       = "$env:SystemRoot\System32\shell32.dll,-259"
+$icoFile    = Join-Path $installDir "icon.ico"
+$icon       = if (Test-Path $icoFile) { "$icoFile,0" } else { "$env:SystemRoot\System32\shell32.dll,-259" }
 
 Write-Host "NetShareMenu installer" -ForegroundColor Cyan
 Write-Host ""
