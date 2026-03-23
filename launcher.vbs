@@ -1,11 +1,13 @@
 ' launcher.vbs -- Collects multi-selected files from Explorer and launches net-share.ps1
 
-Dim sScript, sLock, sList, oShell, oFSO, oFile, oFolder, oItems, oItem
+Dim sScript, sLock, sList, oShell, oFSO, oFile, oFolder, oItems, oItem, oWSH
+
+Set oWSH = CreateObject("WScript.Shell")
 
 sScript = WScript.ScriptFullName
 sScript = Left(sScript, InStrRev(sScript, "\")) & "net-share.ps1"
-sLock   = Environ("TEMP") & "\netshare_lock.tmp"
-sList   = Environ("TEMP") & "\netshare_files.tmp"
+sLock   = oWSH.ExpandEnvironmentStrings("%TEMP%") & "\netshare_lock.tmp"
+sList   = oWSH.ExpandEnvironmentStrings("%TEMP%") & "\netshare_files.tmp"
 
 Set oShell = CreateObject("Shell.Application")
 Set oFSO   = CreateObject("Scripting.FileSystemObject")
@@ -49,7 +51,7 @@ On Error GoTo 0
 
 oFSO.DeleteFile sLock
 
-CreateObject("WScript.Shell").Run _
+oWSH.Run _
     "powershell.exe -ExecutionPolicy Bypass -NoProfile -WindowStyle Hidden" & _
     " -File """ & sScript & """ -Mode share -ListFile """ & sList & """", _
     0, False

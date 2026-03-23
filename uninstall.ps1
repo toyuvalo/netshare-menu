@@ -3,11 +3,11 @@
 Write-Host "Removing NetShareMenu..." -ForegroundColor Yellow
 
 foreach ($path in @(
-    "HKCU:\Software\Classes\*\shell\NetShare"
-    "HKCU:\Software\Classes\Directory\shell\NetShare"
-    "HKCU:\Software\Classes\Directory\Background\shell\NetShareReceive"
+    "Software\Classes\*\shell\NetShare"
+    "Software\Classes\Directory\shell\NetShare"
+    "Software\Classes\Directory\Background\shell\NetShareReceive"
 )) {
-    Remove-Item -Path $path -Recurse -Force -ErrorAction SilentlyContinue
+    try { [Microsoft.Win32.Registry]::CurrentUser.DeleteSubKeyTree($path, $false) } catch {}
 }
 Write-Host "  [OK] Registry entries removed" -ForegroundColor Green
 

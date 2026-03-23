@@ -3,10 +3,12 @@
 # Then self-elevates to add the Windows Firewall rule for ports 8080-8099
 
 $installDir = $PSScriptRoot
-$ps         = "powershell.exe"
+$ps         = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
+$wsScript   = "$env:SystemRoot\System32\wscript.exe"
 $psArgs     = "-ExecutionPolicy Bypass -NoProfile -WindowStyle Hidden -File"
 $script     = Join-Path $installDir "net-share.ps1"
 $launcher   = Join-Path $installDir "launcher.vbs"
+$icon       = "$env:SystemRoot\System32\shell32.dll,-259"
 
 Write-Host "NetShareMenu installer" -ForegroundColor Cyan
 Write-Host ""
@@ -15,43 +17,36 @@ Write-Host ""
 #  REGISTRY  (HKCU -- no admin needed)
 # ======================================
 
-function Set-MenuEntry {
-    param([string]$RegPath, [string]$Label, [string]$Command, [string]$Icon = "")
-    $shell = "$RegPath\shell\NetShare"
-    $cmd   = "$shell\command"
-    New-Item   -Path $shell -Force | Out-Null
-    Set-ItemProperty -Path $shell -Name "(Default)" -Value $Label
-    Set-ItemProperty -Path $shell -Name "Icon"      -Value "imageres.dll,-1015"
-    if ($Icon) { Set-ItemProperty -Path $shell -Name "Icon" -Value $Icon }
-    New-Item   -Path $cmd   -Force | Out-Null
-    Set-ItemProperty -Path $cmd -Name "(Default)" -Value $Command
+$label       = "Send With NetShare"
+$labelRcv    = "Receive a File  (NetShare)"
+$shareCmd    = "`"$wsScript`" `"$launcher`" `"%1`""
+$shareCmdDir = "`"$ps`" $psArgs `"$script`" -Mode share -Path `"%1`""
+$receiveCmd  = "`"$ps`" $psArgs `"$script`" -Mode receive"
+
+# Use .NET Registry API directly -- avoids PS wildcard issues with * key
+# and preserves quotes in command strings exactly
+function Set-RegKey {
+    param([string]$Path, [hashtable]$Values)
+    $key = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey($Path)
+    foreach ($kv in $Values.GetEnumerator()) {
+        $key.SetValue($kv.Key, $kv.Value)
+    }
+    $key.Close()
 }
 
-function Set-ReceiveEntry {
-    param([string]$RegPath)
-    $shell = "$RegPath\shell\NetShareReceive"
-    $cmd   = "$shell\command"
-    New-Item   -Path $shell -Force | Out-Null
-    Set-ItemProperty -Path $shell -Name "(Default)" -Value "Receive a File"
-    Set-ItemProperty -Path $shell -Name "Icon"      -Value "imageres.dll,-1015"
-    New-Item   -Path $cmd   -Force | Out-Null
-    Set-ItemProperty -Path $cmd -Name "(Default)" -Value (
-        "$ps $psArgs `"$script`" -Mode receive")
-}
-
-$shareCmd = "wscript.exe `"$launcher`" `"%1`""
-$shareCmdDir = "$ps $psArgs `"$script`" -Mode share -Path `"%1`""
-
-# Files (all types)
-Set-MenuEntry "HKCU:\Software\Classes\*" "Share on Network" $shareCmd
+# Files (the * key -- literal asterisk, PS registry provider chokes on this)
+Set-RegKey "Software\Classes\*\shell\NetShare"         @{ "" = $label; "Icon" = $icon }
+Set-RegKey "Software\Classes\*\shell\NetShare\command" @{ "" = $shareCmd }
 Write-Host "  [OK] Files context menu" -ForegroundColor Green
 
 # Folders
-Set-MenuEntry "HKCU:\Software\Classes\Directory" "Share on Network" $shareCmdDir
+Set-RegKey "Software\Classes\Directory\shell\NetShare"         @{ "" = $label; "Icon" = $icon }
+Set-RegKey "Software\Classes\Directory\shell\NetShare\command" @{ "" = $shareCmdDir }
 Write-Host "  [OK] Folder context menu" -ForegroundColor Green
 
 # Desktop / folder background -> Receive
-Set-ReceiveEntry "HKCU:\Software\Classes\Directory\Background"
+Set-RegKey "Software\Classes\Directory\Background\shell\NetShareReceive"         @{ "" = $labelRcv; "Icon" = $icon }
+Set-RegKey "Software\Classes\Directory\Background\shell\NetShareReceive\command" @{ "" = $receiveCmd }
 Write-Host "  [OK] Desktop 'Receive a File' context menu" -ForegroundColor Green
 
 # ======================================
