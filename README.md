@@ -26,6 +26,16 @@ Choose between two modes:
 ### Receive a File (right-click desktop or folder background)
 Opens a receive-only server so other devices can send files to you without you needing to share anything first. Files land in `Downloads\received\`.
 
+## Security
+
+NetShare is built for low-friction sharing with people next to you (studio clients, friends on the same Wi-Fi). It pairs zero-effort access for invited guests with a hard fence against everyone else:
+
+- **QR-gated access (since v1.1.0).** Each session generates a fresh 144-bit URL-safe token baked into the QR code. The first request with a valid `?t=<token>` sets a `nst` session cookie; every subsequent click and upload rides on that cookie — guests don't need to retype anything. Anyone without the token (and without the cookie) gets a flat 403. Constant-time comparison prevents timing leaks.
+- **LAN-only bind (since v1.1.0).** The HTTP server binds only to your LAN IP, not `0.0.0.0`. VPN tunnels, guest Wi-Fi adapters, and other interfaces are not exposed.
+- **Per-session token.** Tokens live only as long as the server window is open. Close the window → token is gone, even the same QR code stops working.
+
+This is light authentication, not bank-grade — there's still no TLS (LAN HTTP), and anyone on the same Wi-Fi who can sniff the QR's URL can join the session. Treat the QR like a room key, not a password.
+
 ## Install
 
 ### Windows

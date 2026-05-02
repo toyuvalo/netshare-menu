@@ -1,5 +1,5 @@
 # net-share.ps1 -- LAN file sharing context menu
-# v1.0.0
+# v1.1.0
 
 param(
     [string]$Mode = "share",   # "share" or "receive"
@@ -59,10 +59,18 @@ function Find-FreePort {
     return 8080
 }
 
+function New-AuthToken {
+    # 144 bits of entropy, URL-safe.
+    $bytes = New-Object byte[] 18
+    [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
+    return ([Convert]::ToBase64String($bytes)).Replace('+','-').Replace('/','_').Replace('=','')
+}
+
 function New-QRImage {
     param([string]$Url, [string]$OutPath)
     if (-not $pythonCmd) { return $false }
-    $py = @"
+    # URL + OutPath passed via argv; never interpolated into Python source.
+    $py = @'
 import sys, subprocess
 try:
     try: import qrcode
@@ -70,35 +78,36 @@ try:
         subprocess.check_call([sys.executable,'-m','pip','install','qrcode[pil]','-q'],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         import qrcode
-    qrcode.make(r'$($Url)').save(r'$($OutPath.Replace("\","\\"))')
+    qrcode.make(sys.argv[1]).save(sys.argv[2])
     print('OK')
 except Exception as e: print('FAIL:'+str(e))
-"@
+'@
     $tmp = [IO.Path]::GetTempFileName() + ".py"
     [IO.File]::WriteAllText($tmp, $py)
-    & $pythonCmd $tmp 2>$null | Out-Null
+    & $pythonCmd $tmp $Url $OutPath 2>$null | Out-Null
     Remove-Item $tmp -Force -ErrorAction SilentlyContinue
     return (Test-Path $OutPath)
 }
 
 function Start-PythonServer {
-    param([string]$ServeDir, [int]$Port)
+    param([string]$ServeDir, [int]$Port, [string]$BindIp, [string]$Token)
     New-Item $dropDir -ItemType Directory -Force | Out-Null
     $pinfo = New-Object System.Diagnostics.ProcessStartInfo
     $pinfo.FileName  = $pythonCmd
-    $pinfo.Arguments = "`"$serverPy`" `"$ServeDir`" $Port `"$dropDir`""
+    $pinfo.Arguments = "`"$serverPy`" `"$ServeDir`" $Port `"$dropDir`" `"$BindIp`" `"$Token`""
     $pinfo.UseShellExecute        = $false
     $pinfo.CreateNoWindow         = $true
     $pinfo.RedirectStandardOutput = $true
     $proc = New-Object System.Diagnostics.Process
     $proc.StartInfo = $pinfo
     $proc.Start() | Out-Null
-    # Wait for server to be ready (max 6s)
+    # Wait for server to be ready (max 6s) -- probe the actual bind IP
+    $probeHost = if ($BindIp) { $BindIp } else { '127.0.0.1' }
     $deadline = (Get-Date).AddSeconds(6)
     while ((Get-Date) -lt $deadline) {
         try {
             $c = New-Object System.Net.Sockets.TcpClient
-            $c.Connect("127.0.0.1", $Port); $c.Close(); break
+            $c.Connect($probeHost, $Port); $c.Close(); break
         } catch { Start-Sleep -Milliseconds 200 }
     }
     return $proc
@@ -448,10 +457,11 @@ if (-not $pythonCmd) {
 
 if ($Mode -eq "receive") {
     New-Item $dropDir -ItemType Directory -Force | Out-Null
-    $port = Find-FreePort
-    $ip   = Get-LocalIP
-    $url  = "http://${ip}:${port}"
-    $proc = Start-PythonServer -ServeDir $dropDir -Port $port
+    $port  = Find-FreePort
+    $ip    = Get-LocalIP
+    $token = New-AuthToken
+    $url   = "http://${ip}:${port}/?t=${token}"
+    $proc  = Start-PythonServer -ServeDir $dropDir -Port $port -BindIp $ip -Token $token
     Show-ServerWindow -Url $url -ServerProc $proc
     exit 0
 }
@@ -482,15 +492,16 @@ if ($picked -eq "lan") {
             $url = $null  # set after we know the port
         }
     }
-    $port = Find-FreePort
-    $ip   = Get-LocalIP
+    $port  = Find-FreePort
+    $ip    = Get-LocalIP
+    $token = New-AuthToken
     if ($initialPaths.Count -eq 1 -and (Test-Path $firstPath -PathType Leaf)) {
         $fname = [Uri]::EscapeDataString([IO.Path]::GetFileName($firstPath))
-        $url   = "http://${ip}:${port}/${fname}"
+        $url   = "http://${ip}:${port}/${fname}?t=${token}"
     } else {
-        $url = "http://${ip}:${port}"
+        $url = "http://${ip}:${port}/?t=${token}"
     }
-    $proc = Start-PythonServer -ServeDir $serveDir -Port $port
+    $proc = Start-PythonServer -ServeDir $serveDir -Port $port -BindIp $ip -Token $token
     Show-ServerWindow -Url $url -ServerProc $proc
 
 } elseif ($picked -eq "upload") {

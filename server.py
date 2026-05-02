@@ -1,16 +1,23 @@
 #!/usr/bin/env python3
 """NetShare LAN server -- serves files and accepts uploads via browser."""
 
-import sys, os, socket, html, urllib.parse, mimetypes, json, re
+import sys, os, socket, html, urllib.parse, mimetypes, json, re, secrets
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 
-serve_dir = Path(sys.argv[1]).resolve()
-port      = int(sys.argv[2])
-drop_dir  = Path(sys.argv[3]).resolve()
+serve_dir  = Path(sys.argv[1]).resolve()
+port       = int(sys.argv[2])
+drop_dir   = Path(sys.argv[3]).resolve()
+bind_ip    = sys.argv[4] if len(sys.argv) > 4 else ''
+auth_token = sys.argv[5] if len(sys.argv) > 5 else ''
 drop_dir.mkdir(parents=True, exist_ok=True)
 
-HOST_NAME = socket.gethostname()
+if not auth_token:
+    print('FATAL: auth token required (argv[5])', flush=True)
+    sys.exit(2)
+
+HOST_NAME    = socket.gethostname()
+COOKIE_NAME  = 'nst'
 
 PAGE_CSS = """
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -114,7 +121,27 @@ def fmt_size(n):
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *a): pass
 
+    def _check_auth(self):
+        # Returns 'query' if authed via ?t=, 'cookie' if via cookie, else False.
+        qs = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+        candidate = qs.get('t', [''])[0]
+        if candidate and secrets.compare_digest(candidate, auth_token):
+            return 'query'
+        for piece in self.headers.get('Cookie', '').split(';'):
+            piece = piece.strip()
+            if piece.startswith(COOKIE_NAME + '='):
+                if secrets.compare_digest(piece[len(COOKIE_NAME) + 1:], auth_token):
+                    return 'cookie'
+        return False
+
+    def _send_auth_cookie(self):
+        # Sticky cookie so post-scan follow-ups (uploads, file clicks) work.
+        self.send_header('Set-Cookie',
+                         f'{COOKIE_NAME}={auth_token}; Path=/; HttpOnly; SameSite=Lax')
+
     def do_GET(self):
+        if not self._check_auth():
+            self.send_error(403); return
         path = urllib.parse.unquote(self.path.split('?')[0]).lstrip('/')
         if path == '' or path == '/':
             self._serve_index(serve_dir)
@@ -132,6 +159,8 @@ class Handler(BaseHTTPRequestHandler):
             self.send_error(404)
 
     def do_POST(self):
+        if not self._check_auth():
+            self.send_error(403); return
         if self.path != '/upload':
             self.send_error(404); return
         try:
@@ -161,6 +190,7 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as e:
             resp = json.dumps({'name': 'error', 'error': str(e)}).encode()
         self.send_response(200)
+        self._send_auth_cookie()
         self.send_header('Content-Type', 'application/json')
         self.send_header('Content-Length', len(resp))
         self.end_headers()
@@ -170,6 +200,7 @@ class Handler(BaseHTTPRequestHandler):
         data = path.read_bytes()
         mime = mimetypes.guess_type(str(path))[0] or 'application/octet-stream'
         self.send_response(200)
+        self._send_auth_cookie()
         self.send_header('Content-Type', mime)
         self.send_header('Content-Length', len(data))
         self.send_header('Content-Disposition', f'attachment; filename="{path.name}"')
@@ -227,12 +258,13 @@ class Handler(BaseHTTPRequestHandler):
 </body></html>""".encode('utf-8')
 
         self.send_response(200)
+        self._send_auth_cookie()
         self.send_header('Content-Type', 'text/html; charset=utf-8')
         self.send_header('Content-Length', len(body))
         self.end_headers()
         self.wfile.write(body)
 
 
-server = HTTPServer(('', port), Handler)
+server = HTTPServer((bind_ip, port), Handler)
 print(f'READY:{port}', flush=True)
 server.serve_forever()
